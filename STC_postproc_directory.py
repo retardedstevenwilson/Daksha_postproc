@@ -22,8 +22,14 @@ def readfile_csv (file_name):
 
 def tdms_to_bool_read(in_file_name):
         # Define global constants below
-        event_size=43 # Change nos. of bits in single event
+        event_size=38 # Change nos. of bits in single event
         packet_size=129
+        timestamp_bits=20
+        pixid_bits=8
+        detid_bits=0
+        pha_bits=10
+
+
         # change index[x], index[y] for single packet reading in line 161
         #in_file_name="/home/ayushnema/Documents/work_DP2/tdms_conversions/Sandeep_files/TIFR_43bit_czt_pingpong_fcc_pingpong_23-9-2022_test7.tdms"
 
@@ -31,7 +37,7 @@ def tdms_to_bool_read(in_file_name):
         with TdmsFile.open(in_file_name) as tdms_file:
                 group = tdms_file["Untitled"]
                 all_groups = tdms_file.groups()
-                print (all_groups)
+                #print (all_groups)
 
                 channel=group["Untitled"]
                 all_group_channels = group.channels()
@@ -39,58 +45,67 @@ def tdms_to_bool_read(in_file_name):
 
         #print(len(all_channel_data))
 
-        total_full_packets=int(len(all_channel_data)/packet_size)
-        print(total_full_packets)
+        total_full_packets=int(len(all_channel_data)/(packet_size*event_size))
+        #print(total_full_packets)
 
-        total_events=total_full_packets
+        total_events=total_full_packets*event_size
 
-        df=np.zeros((total_events,4))
-        df = pd.DataFrame(df, columns =["FPGA Timestamp","Detid","Pixel ID","PHA"])
+        #df=np.zeros((total_events,4))
+        #df = pd.DataFrame(df, columns =["FPGA Timestamp","Detid","Pixel ID","PHA"])            for det id included
         #print(df)
-
-
+        #df=np.zeros((total_events,3))
+        #df = pd.DataFrame(df, columns =["FPGA Timestamps","Pixel ID","PHA"])               
+        
+        df = np.recarray((total_events, ), dtype=[('FPGA Timestamps', np.float32),      #Sujay's recarray idea 1. 
+                                                      ('Pixel ID', np.uint8),
+                                                      ('PHA', np.uint16)])
+                                                     
 
         total_sample_count=len(all_channel_data)
 
-        header=all_channel_data[0:43]
+        header=all_channel_data[0:event_size]
         print(len(header))
         #event_count=0
-        header_count=0
+        #header_count=0
+        
+        print("no. of packets are ",total_full_packets)
 
-
-        for element_index in range(0,len(all_channel_data)-(len(all_channel_data)%43),43):    
+        for element_index in range(0,len(all_channel_data)-(len(all_channel_data)%event_size),event_size):    
                 event_elements=all_channel_data[element_index:element_index+43]
                 # print(event_elements)
                 #print(event_elements)
                 # print(header)
                 #print(event_elements)
-                event_no=int(element_index/43)
+                event_no=int(element_index/event_size)
 
                 if (event_elements.all!=header).all():
 
-                        timestamp_event=event_elements[0:20]
+                        timestamp_event=event_elements[0:timestamp_bits]
                         timestamp_event_str= ''.join(str(x) for x in timestamp_event)
                         timestamp_event_dec=int(timestamp_event_str, 2)
                         #print(timestamp_event_dec)
-                        df.at[event_no, "FPGA Timestamps"]= timestamp_event_dec
-
-                        detID_event=event_elements[20:25]
+                        #df.at[event_no, "FPGA Timestamps"]= timestamp_event_dec                      
+                        df[event_no]["Pixel ID"] =timestamp_event_dec                              #Sujay
+                        
+                        """ detID_event=event_elements[20:25]
                         detID_event_str="".join(str(x) for x in detID_event)
                         detID_event_dec=int(detID_event_str, 2)
                         #print(detID_event)
                         df.at[event_no, "Det ID"] = detID_event_dec
-                        
-                        pixid_event=event_elements[25:33]
+                         """
+                        pixid_event=event_elements[timestamp_bits:timestamp_bits+pixid_bits]         
                         pixid_event_str="".join(str(x) for x in pixid_event)
                         pixid_event_dec=int(pixid_event_str, 2)
-                        df.at[event_no, "Pixel ID"] =pixid_event_dec
+                        #df.at[event_no, "Pixel ID"] =pixid_event_dec
+                        df[event_no]["Pixel ID"] =pixid_event_dec                                   #sujay
                         
-                        pha_event=event_elements[33:43]
+                        pha_event=event_elements[timestamp_bits+pixid_bits:timestamp_bits+pixid_bits+pha_bits]
                         pha_event_str="".join(str(x) for x in pha_event)
                         pha_event_dec=int(pha_event_str, 2)
-                        df.at[event_no, "PHA"]=pha_event_dec
+                        #df.at[event_no, "PHA"]=pha_event_dec
+                        df[event_no]["PHA"]=pha_event_dec                                           #sujay
 
-        
+        print(df)
 
         return df,total_sample_count
 
@@ -408,11 +423,11 @@ def save_data(infile):
     #popt_iter,E_res_iter=iterative_3sig1sig_fit(infile,out_dir)
     
     #creating a text file for conclusions 
-    fh=open(out_dir+'\\remarks.txt','w+')
-    fh.write("Total counts of the sample are %d \n" %total_sample_count )
-    fh.write("The median of the PHA of the sample is %d \n" % median_table)
-    fh.write("the median standard deviation of sample is %d \n" %MAD_table)
-    fh.write("the MAD total of sample is %d \n" %MAD_total_count)
+    #fh=open(out_dir+'\\remarks.txt','w+')
+    #fh.write("Total counts of the sample are %d \n" %total_sample_count )
+    #fh.write("The median of the PHA of the sample is %d \n" % median_table)
+    #fh.write("the median standard deviation of sample is %d \n" %MAD_table)
+    #fh.write("the MAD total of sample is %d \n" %MAD_total_count)
     #fh.write("the iterated gaussian values are %d \n" %popt_iter)
     #fh.write("the iterated resolution is %d \n" %E_res_iter)
     
@@ -425,7 +440,7 @@ def save_data(infile):
     #fh.write("the skewed gaussian mean is %d \n" %skew_mean )
     #fh.write("the skewed gaussian resoluton is %d \n" %E_res_skew )
     
-    fh.close()
+    #fh.close()
     
     
     
@@ -436,11 +451,11 @@ def save_data(infile):
 
 '''running the code'''
 
-input_path = r'//home/ayushnema/Documents/work_DP2/Daksha_postproc/tdms_conversions'
-output_path =r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/tdms_conversions_result'
+input_path = r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump'
+#output_path =r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump_result'
+output_path =input_path+ r'tdms_dump_result'
 
-
-processedfilecount=0           
+processedfilecount=0            
 for file in glob.glob(input_path +"/*active/*.tdms" ):
    print(file)
    save_data(file)
