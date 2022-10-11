@@ -20,94 +20,70 @@ def readfile_csv (file_name):
     return df, total_sample_count
     
 
-def tdms_to_bool_read(in_file_name):
+def tdms_to_bool_read(in_file_name,folder_address):
         # Define global constants below
-        event_size=38 # Change nos. of bits in single event
+        event_size=43 # Change nos. of bits in single event
         packet_size=129
         timestamp_bits=20
         pixid_bits=8
-        detid_bits=0
+        detid_bits=5
         pha_bits=10
-
-
-        # change index[x], index[y] for single packet reading in line 161
-        #in_file_name="/home/ayushnema/Documents/work_DP2/tdms_conversions/Sandeep_files/TIFR_43bit_czt_pingpong_fcc_pingpong_23-9-2022_test7.tdms"
 
         tdms_file = TdmsFile.read(in_file_name)
         with TdmsFile.open(in_file_name) as tdms_file:
                 group = tdms_file["Untitled"]
-                all_groups = tdms_file.groups()
-                #print (all_groups)
-
                 channel=group["Untitled"]
-                all_group_channels = group.channels()
                 all_channel_data = channel[:]
 
-        #print(len(all_channel_data))
-
-        total_full_packets=int(len(all_channel_data)/(packet_size*event_size))
-        #print(total_full_packets)
-
-        total_events=total_full_packets*event_size
-
-        #df=np.zeros((total_events,4))
-        #df = pd.DataFrame(df, columns =["FPGA Timestamp","Detid","Pixel ID","PHA"])            for det id included
-        #print(df)
-        #df=np.zeros((total_events,3))
-        #df = pd.DataFrame(df, columns =["FPGA Timestamps","Pixel ID","PHA"])               
-        
-        df = np.recarray((total_events, ), dtype=[('FPGA Timestamps', np.float32),      #Sujay's recarray idea 1. 
+        len_all_channel_data=all_channel_data.size
+        total_full_packets= int((len_all_channel_data)/(packet_size*event_size))
+        print("total events initially are",total_full_packets*128)
+        total_events=total_full_packets*128        
+        events_list = np.recarray((total_events, ), dtype=[('FPGA Timestamp', np.uint32),  
                                                       ('Pixel ID', np.uint8),
+                                                      ('Det ID',np.uint8),
                                                       ('PHA', np.uint16)])
-                                                     
 
-        total_sample_count=len(all_channel_data)
-
-        header=all_channel_data[0:event_size]
-        print(len(header))
-        #event_count=0
-        #header_count=0
         
-        print("no. of packets are ",total_full_packets)
+        timestamp_bits_base=2**np.arange(timestamp_bits)[::-1]
+        pixid_bits_base=2**np.arange(pixid_bits)[::-1]
+        detid_bits_base=2**np.arange(detid_bits)[::-1]
+        pha_bits_base=2**np.arange(pha_bits)[::-1]
+        header_counter=0
 
-        for element_index in range(0,len(all_channel_data)-(len(all_channel_data)%event_size),event_size):    
-                event_elements=all_channel_data[element_index:element_index+43]
-                # print(event_elements)
-                #print(event_elements)
-                # print(header)
-                #print(event_elements)
-                event_no=int(element_index/event_size)
+        for event_no in range(0,total_full_packets*129):
+            bit_counter=0
 
-                if (event_elements.all!=header).all():
+            if event_no%129 == 0:
+                    header_counter+=1
+                    #event_count+=1
+            else:
+                event_bits=all_channel_data[(event_no)*event_size:(event_no+1)*event_size]
 
-                        timestamp_event=event_elements[0:timestamp_bits]
-                        timestamp_event_str= ''.join(str(x) for x in timestamp_event)
-                        timestamp_event_dec=int(timestamp_event_str, 2)
-                        #print(timestamp_event_dec)
-                        #df.at[event_no, "FPGA Timestamps"]= timestamp_event_dec                      
-                        df[event_no]["Pixel ID"] =timestamp_event_dec                              #Sujay
-                        
-                        """ detID_event=event_elements[20:25]
-                        detID_event_str="".join(str(x) for x in detID_event)
-                        detID_event_dec=int(detID_event_str, 2)
-                        #print(detID_event)
-                        df.at[event_no, "Det ID"] = detID_event_dec
-                         """
-                        pixid_event=event_elements[timestamp_bits:timestamp_bits+pixid_bits]         
-                        pixid_event_str="".join(str(x) for x in pixid_event)
-                        pixid_event_dec=int(pixid_event_str, 2)
-                        #df.at[event_no, "Pixel ID"] =pixid_event_dec
-                        df[event_no]["Pixel ID"] =pixid_event_dec                                   #sujay
-                        
-                        pha_event=event_elements[timestamp_bits+pixid_bits:timestamp_bits+pixid_bits+pha_bits]
-                        pha_event_str="".join(str(x) for x in pha_event)
-                        pha_event_dec=int(pha_event_str, 2)
-                        #df.at[event_no, "PHA"]=pha_event_dec
-                        df[event_no]["PHA"]=pha_event_dec                                           #sujay
+                timestamp_event=event_bits[0:timestamp_bits]
+                events_list["FPGA Timestamp"][event_no-header_counter]=np.dot(timestamp_event,timestamp_bits_base)
+                
+                detid_event=event_bits[timestamp_bits:timestamp_bits+detid_bits]
+                events_list["Det ID"][event_no-header_counter] = np.dot(detid_event,detid_bits_base)
+                
+                
+                pixid_event=event_bits[timestamp_bits+detid_bits:timestamp_bits+detid_bits+pixid_bits]         
+                events_list["Pixel ID"][event_no-header_counter]=np.dot(pixid_event,pixid_bits_base)
+                
+                pha_event=event_bits[timestamp_bits+detid_bits+pixid_bits:timestamp_bits+detid_bits+pixid_bits+pha_bits]
+                events_list["PHA"][event_no-header_counter]=np.dot(pha_event,pha_bits_base)
 
-        print(df)
+            
+        print(events_list)
 
-        return df,total_sample_count
+        print("after",events_list.size)
+        events_list=pd.DataFrame.from_records(events_list)          
+        events_list.to_csv(folder_address+'/dataframe_ayush.txt',sep=' ')
+        #plt.hist(events_list["PHA"],bins=np.arange(0,1024))
+        #plt.show()
+        
+
+        return events_list,len_all_channel_data
 
 
 def plot_intensity_graph (table,folder_address):
@@ -135,7 +111,7 @@ def energy_spectrum(table,folder_address):
     '''plots the PHA spectrum with respect to counts'''
     plt.figure()
 #    plt.hist(table['PHA'],bins=1024,range=(0,2000))
-    plt.hist(table['PHA'],bins=4096)
+    plt.hist(table['PHA'],bins=np.arange(0,1024))
 
     plt.xlabel('PHA')
     plt.ylabel('counts')
@@ -405,13 +381,13 @@ def save_data(infile):
     '''runs all the defined functions and saves the plots and data in an identical directory created alongside the
     source folder.'''
     
-    table,total_sample_count=tdms_to_bool_read(infile) #reading the file
     
     path=Path(infile).parent.absolute() 
     out_dir=output_path+'\\' + os.path.basename(path)+'\\'+ os.path.basename(infile)[:-4]  # making the directory 
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
    
+    table,total_sample_count=tdms_to_bool_read(infile,out_dir) #reading the file
     #using the written functions to acquire the graphs and values which are needed to be saved
     median_table,MAD_table,MAD_total_count= median_model(table) 
     energy_spectrum(table,out_dir)
@@ -453,7 +429,7 @@ def save_data(infile):
 
 input_path = r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump'
 #output_path =r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump_result'
-output_path =input_path+ r'tdms_dump_result'
+output_path =input_path +r'tdms_dump_result'
 
 processedfilecount=0            
 for file in glob.glob(input_path +"/*active/*.tdms" ):
