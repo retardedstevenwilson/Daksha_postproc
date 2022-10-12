@@ -40,9 +40,10 @@ def tdms_to_bool_read(in_file_name,folder_address):
         print("total events initially are",total_full_packets*128)
         total_events=total_full_packets*128        
         events_list = np.recarray((total_events, ), dtype=[('FPGA Timestamp', np.uint32),  
-                                                      ('Pixel ID', np.uint8),
                                                       ('Det ID',np.uint8),
+                                                      ('Pixel ID', np.uint8),
                                                       ('PHA', np.uint16)])
+
 
         
         timestamp_bits_base=2**np.arange(timestamp_bits)[::-1]
@@ -56,7 +57,7 @@ def tdms_to_bool_read(in_file_name,folder_address):
 
             if event_no%129 == 0:
                     header_counter+=1
-                    #event_count+=1
+                    
             else:
                 event_bits=all_channel_data[(event_no)*event_size:(event_no+1)*event_size]
 
@@ -73,11 +74,18 @@ def tdms_to_bool_read(in_file_name,folder_address):
                 pha_event=event_bits[timestamp_bits+detid_bits+pixid_bits:timestamp_bits+detid_bits+pixid_bits+pha_bits]
                 events_list["PHA"][event_no-header_counter]=np.dot(pha_event,pha_bits_base)
 
-            
-        print(events_list)
+        
 
-        print("after",events_list.size)
-        events_list=pd.DataFrame.from_records(events_list)          
+        print(events_list)
+        
+        mask=np.ones((128,))
+        mask[80:]=0
+        mask=mask.astype(bool)
+        mask=np.tile(mask,total_full_packets)
+        events_list=events_list[mask]
+
+        events_list=pd.DataFrame.from_records(events_list)
+        print("after",len(events_list))
         events_list.to_csv(folder_address+'/dataframe_ayush.txt',sep=' ')
         #plt.hist(events_list["PHA"],bins=np.arange(0,1024))
         #plt.show()
