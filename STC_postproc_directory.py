@@ -38,6 +38,8 @@ def tdms_to_bool_read(in_file_name,folder_address):
         len_all_channel_data=all_channel_data.size
         total_full_packets= int((len_all_channel_data)/(packet_size*event_size))
         print("total events initially are",total_full_packets*128)
+        print("tital full packets are",total_full_packets)
+        
         total_events=total_full_packets*128        
         events_list = np.recarray((total_events, ), dtype=[('FPGA Timestamp', np.uint32),  
                                                       ('Det ID',np.uint8),
@@ -52,6 +54,7 @@ def tdms_to_bool_read(in_file_name,folder_address):
         pha_bits_base=2**np.arange(pha_bits)[::-1]
         header_counter=0
 
+        #for event_no in range(0,*129):
         for event_no in range(0,total_full_packets*129):
             bit_counter=0
 
@@ -94,7 +97,7 @@ def tdms_to_bool_read(in_file_name,folder_address):
         return events_list,len_all_channel_data
 
 
-def plot_intensity_graph (table,folder_address):
+def DPH_plot (table,folder_address):
     '''generates the DPH'''
     pixel_count=[]
     for i in range(256):
@@ -114,6 +117,20 @@ def plot_intensity_graph (table,folder_address):
     plt.savefig(DPH_plotname)
     plt.close()
 
+def pixel_id_counts(table,folder_address):
+    plt.figure()
+
+    plt.hist(table['Pixel ID'],bins=np.arange(0,256))
+
+    plt.xlabel('Pixid')
+    plt.ylabel('counts')
+    #plt.grid()
+    #saving the plot
+    pixid_plotname=folder_address + '/pixid spectrum.png'
+    plt.savefig(pixid_plotname)
+    #plt.show()
+    plt.close()
+
 
 def energy_spectrum(table,folder_address): 
     '''plots the PHA spectrum with respect to counts'''
@@ -127,6 +144,7 @@ def energy_spectrum(table,folder_address):
     
     #saving the plot
     E_spec_plotname=folder_address + '/PHA spectrum.png'
+    #plt.show()
     plt.savefig(E_spec_plotname)
     plt.close()
 
@@ -168,8 +186,8 @@ def PHA_subplots(table,PHA_limit,count_limit,folder_address):
     fig.set_size_inches(30, 30)
     for x in range(16):
         for y in range(16):    
-            ax[x][y].set_xlim(0, PHA_limit)
-            ax[x][y].set_ylim(0,count_limit)
+            #ax[x][y].set_xlim(0, PHA_limit)
+            #ax[x][y].set_ylim(0,count_limit)
             ax[x, y].text(PHA_limit/2,count_limit/2, str((x, y)),fontsize=6, ha='center')    
         
     for ID in range(256):
@@ -397,10 +415,11 @@ def save_data(infile):
    
     table,total_sample_count=tdms_to_bool_read(infile,out_dir) #reading the file
     #using the written functions to acquire the graphs and values which are needed to be saved
-    median_table,MAD_table,MAD_total_count= median_model(table) 
+    #median_table,MAD_table,MAD_total_count= median_model(table) 
     energy_spectrum(table,out_dir)
-    plot_intensity_graph(table,out_dir)
+    DPH_plot(table,out_dir)
     PHA_subplots(table,4096,100,out_dir)
+    pixel_id_counts(table,out_dir)
     #popt,E_res=Am_res_simple(table,out_dir)
     #skew_amp,skew_std,skew_mean,E_res_skew=am_res_skewed_gauss(table,out_dir)
     
@@ -411,13 +430,13 @@ def save_data(infile):
     #fh.write("Total counts of the sample are %d \n" %total_sample_count )
     #fh.write("The median of the PHA of the sample is %d \n" % median_table)
     #fh.write("the median standard deviation of sample is %d \n" %MAD_table)
-    #fh.write("the MAD total of sample is %d \n" %MAD_total_count)
+    #h.write("the MAD total of sample is %d \n" %MAD_total_count)
     #fh.write("the iterated gaussian values are %d \n" %popt_iter)
     #fh.write("the iterated resolution is %d \n" %E_res_iter)
     
     
     #fh.write("the mean of Am241 is %d \n" %popt[1])
-    #  fh.write("the std of Am241 is %d \n" %popt[2])
+    #fh.write("the std of Am241 is %d \n" %popt[2])
     #fh.write("the skewed gaussian amplitude is %d \n" %skew_amp )
     #fh.write("the resolution of Am241 line is %d\n " %E_res)
     #fh.write("the skewed gaussian std is %d \n" %skew_std )
@@ -437,7 +456,7 @@ def save_data(infile):
 
 input_path = r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump'
 #output_path =r'/home/ayushnema/Documents/work_DP2/Daksha_postproc/detector_datadump/tdms_dump_result'
-output_path =input_path +r'tdms_dump_result'
+output_path =input_path +r'tdms_dump_procfiles'+r'tdms_dump_result'
 
 processedfilecount=0            
 for file in glob.glob(input_path +"/*active/*.tdms" ):
