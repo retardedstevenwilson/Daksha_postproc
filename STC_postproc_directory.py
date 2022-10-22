@@ -461,6 +461,6 @@ output_path =input_path +r'tdms_dump_procfiles'+r'tdms_dump_result'
 processedfilecount=0            
 for file in glob.glob(input_path +"/*active/*.tdms" ):
    print(file)
-   save_data(file)
+   save_data(input_path+file)
    processedfilecount+=1
    print("no.of processed files",processedfilecount)
