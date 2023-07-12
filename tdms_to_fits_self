@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+
+# code to take in event chunks by reading the header and getting information of no of events in that packet.
+# being modified in some places acoording to acquisition efficiency.
+# author- ayush nema.
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+from nptdms import TdmsFile
+from astropy.io import fits
+import os
+
+parser = argparse.ArgumentParser(description="""Script to convert tdms files dumped from
+                                 LabView to fits files for further processsing""")
+parser.add_argument("inpath", type=str, help="Path to the .tdms files")
+args = parser.parse_args()
+
+in_path = Path(args.inpath + '/raw')
+print(args.inpath)
+out_path = Path(args.inpath + '/fits')
+print(out_path)
+
+# define event and header bits
+event_size = 37
+header_bits = 37
+Nevt_packet = 160
+
+
+# event bits split
+time_bits = 14
+pixid_bits = 8
+detid_bits = 5
+pha_bits = 10
+
+# 2 power basis for timestamp, pixeID, detID and PHA
+time_bits_base = 2**np.arange(time_bits)[::-1]
+pixid_bits_base = 2**np.arange(pixid_bits)[::-1]
+detid_bits_base = 2**np.arange(detid_bits)[::-1]
+pha_bits_base = 2**np.arange(pha_bits)[::-1]
+
+processedfilecount = 0
+for tdms_file in in_path.glob("*.tdms"):
+    if not os.path.exists(tdms_file.stem + '.fits.gz'):
+        print("Processing TDMS file", tdms_file)
+        rawdata = TdmsFile.read(tdms_file)
+        data_bitstream = rawdata["Untitled"]["Untitled"][:]  # access group and (TDMS) channel both at same time
+
+        Nevents = 0
+        Nheaders = 0
+        events_bitstream = []
+        #print("no of bits: ",data_bitstream.size)
+        idx = 0  # pointer to the position in bitstream
+        while idx <= data_bitstream.size:
+            header = data_bitstream[idx:idx + header_bits]
+            Nheaders += 1
+            idx += header_bits
+
+            Nevents += Nevt_packet
+            events_bitstream.extend(data_bitstream[idx: idx + Nevt_packet*event_size])
+
+            idx += Nevt_packet*event_size
+
+        # remove last packet data and convert event list into array
+        Nevents = Nevents - Nevt_packet
+        print("Total no. events in the file:", Nevents)
+        print(len(events_bitstream))
+        events_bitstream = np.array(events_bitstream[0: Nevents*event_size])
+        
+        events_bitstream = events_bitstream.reshape(Nevents, event_size)
+
+        events = np.recarray((Nevents, ), dtype=[('FPGA_Time', np.uint32), ('detID', np.uint8), ('pixID', np.uint8),
+                                                ('PHA', np.uint16)])
+
+        # convert the binary stream to decimals
+        time = events_bitstream[:, :time_bits]
+        events["FPGA_Time"] = np.dot(time, time_bits_base)
+
+        detid = events_bitstream[:, time_bits:time_bits + detid_bits]
+        events["detID"] = np.dot(detid, detid_bits_base)
+
+        pixid = events_bitstream[:, time_bits + detid_bits:time_bits + detid_bits + pixid_bits]
+        events["pixID"] = np.dot(pixid, pixid_bits_base)
+
+        pha = events_bitstream[:, -pha_bits:]
+        events["PHA"] = np.dot(pha, pha_bits_base)
+
+        # create fits binary table
+        evtHDU = fits.BinTableHDU(data=events, name='MEBoxEvents', uint=True)
+
+        # create the HDU list and dump the file
+        HDUList = fits.HDUList()
+        HDUList.append(fits.PrimaryHDU())
+        HDUList.append(evtHDU)
+
+        out_path.mkdir(parents=True, exist_ok=True)
+        out_file_fits = tdms_file.stem + '.fits.gz'
+        #out_file_csv = tdms_file.stem + '.csv'
+
+        HDUList.writeto(out_path.joinpath(out_file_fits), overwrite=True)
+
+        #np.savetxt(out_path.joinpath(out_file_csv), events, fmt='%d', delimiter=",",
+        #        header="FPGA_Time, detD, pixID, PHA")
+        processedfilecount += 1
+        print("no.of processed files", processedfilecount)
